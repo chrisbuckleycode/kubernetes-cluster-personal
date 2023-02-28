@@ -1,5 +1,7 @@
 # DigitalOcean Infrastructure Terraform - Kubernetes and LoadBalancer
 
+## Initial Config
+
 [DigitalOcean Cloud Dashboard](https://cloud.digitalocean.com/)
 
 [DigitalOcean Kubernetes Dashboard](https://cloud.digitalocean.com/kubernetes/clusters)
@@ -56,6 +58,57 @@ Example kubectl commands:
 ```kubectl config current-context```
 ```kubectl config get-contexts```
 ```kubectl config use-context <context>```
+
+Download and install helm
+
+```https://helm.sh/docs/intro/install/```
+
+e.g.
+
+``` curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash ```
+
+(will install to /usr/local/bin/helm)
+
+## Argo CD
+
+Can use ArgoCD to deploy apps including ingress.
+
+Before ingress, cert-manager installed, can access web UI via port-forwarding.
+
+``` kubectl create namespace argocd ```
+
+``` helm repo add argo https://argoproj.github.io/argo-helm ```
+
+``` helm install argocd argo/argo-cd --n argocd --version 5.23.3 -f values.yaml ```
+
+or use instead Terraform resources: [2.argocd](./2.argocd/)
+
+``` export KUBE_CONFIG_PATH=~/.kube/config ```
+
+``` terraform init ```
+
+``` terraform plan ```
+
+``` terraform apply ```
+
+Equivalent to DigitalOcean's 1-click marketplace:
+[DigitalOcean Marketplace-Kubernetes ArgoCD Stack](https://github.com/digitalocean/marketplace-kubernetes/tree/master/stacks/argocd)
+
+Validation:
+``` helm ls -n argocd ```
+
+``` kubectl get pods -n argocd ```
+
+Fetch password for web UI:
+``` kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo ```
+
+Port forward:
+``` kubectl port-forward svc/argocd-server -n argocd 8080:443 ```
+
+username: admin
+password (as above)
+
+
 
 ## Load Balancer
 
