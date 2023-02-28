@@ -31,3 +31,4 @@ override.tf.json
 .terraform.lock.hcl
 pat.txt
 cluster1-kubeconfig.yaml
+install.txt
