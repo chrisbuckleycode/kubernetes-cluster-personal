@@ -1,0 +1,9 @@
+server:
+  replicas: 2
+  env:
+    - name: ARGOCD_API_SERVER_REPLICAS
+      value: '2'
+
+repoServer:
+  replicas: 2
+  
