@@ -318,4 +318,8 @@ Equivalent to DigitalOcean's 1-click marketplace:
 
 
 Reference:
-https://github.com/digitalocean/Kubernetes-Starter-Kit-Developers/blob/main/03-setup-ingress-controller/nginx.md
+- [DigitalOcean K8s Starter Kit - Ingress](https://github.com/digitalocean/Kubernetes-Starter-Kit-Developers/blob/main/03-setup-ingress-controller/nginx.md)
+- [The CB4 Full Stack Solution](https://thecb4.io/posts/infrastructure-devops/)
+- [DigitalOcean DOKS CI/CD](https://github.com/digitalocean/container-blueprints/tree/main/DOKS-CI-CD)
+- [DigitalOcean Kubernetes Sample Apps](https://github.com/digitalocean/kubernetes-sample-apps)
+- [DigitalOcean Marketplace Kubernetes Stacks](https://github.com/digitalocean/marketplace-kubernetes/tree/master/stacks)
