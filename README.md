@@ -79,7 +79,7 @@ Before ingress, cert-manager installed, can access web UI via port-forwarding.
 
 ``` helm repo add argo https://argoproj.github.io/argo-helm ```
 
-``` helm install argocd argo/argo-cd --n argocd --version 5.23.3 -f values.yaml ```
+``` helm install argocd argo/argo-cd -n argocd --version 5.23.3 -f values.yaml ```
 
 or use instead Terraform resources: [2.argocd](./2.argocd/)
 
@@ -110,7 +110,7 @@ password (as above)
 
 
 
-## Load Balancer
+## Load Balancer - Research
 
 Terraform resource exists - `digitalocean_loadbalancer`
 
@@ -135,7 +135,7 @@ Then, there is a question from someone unable to create a working load balancer 
 Finally, I realized that on the DO Kubernetes dashboard itself, there is a note that says:
 > Important: Load balancers and volumes should only be created through kubectl.
 
-**Conclusion: For a load-balancer, deploy Kubernetes resources and do not use Terraform resource.**
+**Conclusion: For a load-balancer, deploy Kubernetes resources and do not use DigitalOcean (Terraform) resource.**
 
 Options:
 - Yaml example: [How to Add Load Balancers to Kubernetes Clusters](https://docs.digitalocean.com/products/kubernetes/how-to/add-load-balancers/)
@@ -143,3 +143,183 @@ Options:
 - Helm chart: [How To Set Up an Nginx Ingress on DigitalOcean Kubernetes Using Helm](https://www.digitalocean.com/community/tutorials/how-to-set-up-an-nginx-ingress-on-digitalocean-kubernetes-using-helm)
 
 Important: limit load-balancer to a single 'node'. More load-balancer nodes means more capacity but costs more. Default size is 1 node.
+
+## Ingress 
+
+Can use ArgoCD to deploy ingress but choose to do with Terraform as ingress is fundamental.
+
+### Recreate Cluster
+
+Increase node size to 4cpu/8gb (48 USD/month) i.e. <code>4vcpu-8gb</code> from <code>doctl kubernetes options sizes</code>
+
+```doctl auth init```
+
+Recreate cluster:
+```doctl k8s cluster delete cluster1```
+Check any LBs left over:
+```doctl compute load-balancer list --format IP,ID,Name,Status```
+
+doctl k8s cluster create cluster2 \
+  --auto-upgrade=false \
+  --surge-upgrade=false \
+  --ha=false \
+  --node-pool "name=basicnp;size=s-4vcpu-8gb-amd;count=1;tag=cluster2;label=type=basic;auto-scale=false" \
+  --region ams3
+
+Check:
+```kubectl config current-context```
+
+If not:
+```doctl kubernetes cluster kubeconfig save <your_cluster_name>```
+
+Check:
+```kubectl get nodes```
+```doctl k8s cluster list```
+
+If not ready do:
+```kubectl describe node <worker_node_name>```
+```kubectl describe pod <problempod>```
+
+Required for helm auth:
+``` export KUBE_CONFIG_PATH=~/.kube/config ```
+
+### Ingress Install
+
+```helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx```
+```helm repo update ingress-nginx```
+```helm search repo ingress-nginx```
+
+NGINX_CHART_VERSION="4.1.3"
+helm install ingress-nginx ingress-nginx/ingress-nginx --version "$NGINX_CHART_VERSION" \
+  --namespace ingress-nginx \
+  --create-namespace \
+  -f "manifests/nginx-values-v${NGINX_CHART_VERSION}.yaml"
+
+(proxy protocol is set to allow client IP to be passed to applications)
+
+If error from earlier install, deleting namespace or helm uninstall won't remove everything, use this:
+```kubectl delete clusterrole nginx-ingress```
+```kubectl delete clusterrolebindings.rbac.authorization.k8s.io nginx-ingress```
+```kubectl delete clusterrole ingress-nginx```
+```kubectl delete clusterrole ingress-nginx-admission```
+```kubectl delete clusterrolebindings ingress-nginx```
+```kubectl delete clusterrolebindings ingress-nginx-admission```
+```kubectl delete ingressclass nginx```
+```kubectl delete ValidatingWebhookConfiguration ingress-nginx-admission```
+
+Check:
+```helm ls -n ingress-nginx```
+```kubectl get all -n ingress-nginx```
+Wait for LB external IP:
+```watch -n 2 kubectl get all -n ingress-nginx```
+```doctl compute load-balancer list --format IP,ID,Name,Status```
+
+Get external IP:
+```kubectl get svc -n ingress-nginx```
+
+### DNS
+
+- At registrar, configure domain name with DO's nameservers
+- At DO, manually add A records "echo", "quote" with ttl 30
+
+### Create 2x Apps
+(Cert configuration not yet required)
+
+```kubectl create ns backend```
+Create backend services (and deployments):
+```kubectl apply -f manifests/echo_deployment.yaml```
+```kubectl apply -f manifests/quote_deployment.yaml```
+```kubectl apply -f manifests/echo_service.yaml```
+```kubectl apply -f manifests/quote_service.yaml```
+
+Check:
+```kubectl get deployments -n backend```
+```kubectl get svc -n backend```
+
+### Cert Manager Install
+(required for https/TLS)
+
+```helm repo add jetstack https://charts.jetstack.io```
+```helm repo update jetstack```
+
+CERT_MANAGER_HELM_CHART_VERSION="1.8.0"
+helm install cert-manager jetstack/cert-manager --version "$CERT_MANAGER_HELM_CHART_VERSION" \
+  --namespace cert-manager \
+  --create-namespace \
+  -f manifests/cert-manager-values-v${CERT_MANAGER_HELM_CHART_VERSION}.yaml
+
+Check:
+```helm ls -n cert-manager```
+```kubectl get all -n cert-manager```
+Look for 3 deployments, 3 replicasets, 1 pod each, one svc
+Check:
+```kubectl get crd -l app.kubernetes.io/name=cert-manager```
+Look for 6 crds
+
+Create secret, put API token below:
+
+DO_API_TOKEN=<put token here>
+kubectl create secret generic "digitalocean-dns" \
+  --namespace backend \
+  --from-literal=access-token="$DO_API_TOKEN"
+
+Issuer Create (customize email address):
+```kubectl apply -f manifests/cert-manager-wcard-issuer.yaml```
+
+Check:
+```kubectl get issuer letsencrypt-nginx-wcard -n backend```
+
+Check for 'Ready' status:
+```kubectl describe issuer letsencrypt-nginx-wcard -n backend```
+
+Create CRD certificate (customize domain):
+```kubectl apply -f manifests/cert-manager-wcard-certificate.yaml```
+
+Check:
+```kubectl get certificate <domain name> -n backend```
+(Can take 15-60 minutes to be ready)
+
+If still not ready:
+```kubectl logs -l app=cert-manager,app.kubernetes.io/component=controller -n cert-manager```
+
+Check secret:
+```kubectl describe secret <domain name> -n backend```
+(should show wildcards and tls keypair)
+
+Create Ingress resource (customize domain):
+```kubectl apply -f manifests/wildcard-host.yaml```
+```kubectl get ingress -n backend```
+
+### Site Testing:
+
+```curl -Li http://echo.<domain name>/```
+```curl -Li http://quote.<domain name>/```
+
+(Shows also client IP in header)
+
+### Terraform Alternative
+
+Use instead Terraform resources: [3.ingress](./3.ingress/)
+
+``` export KUBE_CONFIG_PATH=~/.kube/config ```
+
+``` terraform init ```
+
+``` terraform plan ```
+
+``` terraform apply ```
+
+
+Equivalent to DigitalOcean's 1-click marketplace:
+[DigitalOcean Marketplace-Kubernetes Ingress-Nginx Stack](https://github.com/digitalocean/marketplace-kubernetes/tree/master/stacks/ingress-nginx)
+
+Equivalent to DigitalOcean's 1-click marketplace:
+[DigitalOcean Marketplace-Kubernetes Cert-Manager Stack](https://github.com/digitalocean/marketplace-kubernetes/tree/master/stacks/cert-manager)
+
+
+Reference:
+- [DigitalOcean K8s Starter Kit - Ingress](https://github.com/digitalocean/Kubernetes-Starter-Kit-Developers/blob/main/03-setup-ingress-controller/nginx.md)
+- [The CB4 Full Stack Solution](https://thecb4.io/posts/infrastructure-devops/)
+- [DigitalOcean DOKS CI/CD](https://github.com/digitalocean/container-blueprints/tree/main/DOKS-CI-CD)
+- [DigitalOcean Kubernetes Sample Apps](https://github.com/digitalocean/kubernetes-sample-apps)
+- [DigitalOcean Marketplace Kubernetes Stacks](https://github.com/digitalocean/marketplace-kubernetes/tree/master/stacks)

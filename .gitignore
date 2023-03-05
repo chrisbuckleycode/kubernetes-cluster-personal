@@ -32,3 +32,5 @@ override.tf.json
 pat.txt
 cluster1-kubeconfig.yaml
 install.txt
+cert-manager-wcard-certificate.yaml
+wildcard-host.yaml
