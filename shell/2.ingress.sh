@@ -20,7 +20,7 @@ helm install ingress-nginx \
   --version "$NGINX_CHART_VERSION" \
   --namespace ingress-nginx \
   --create-namespace \
-  -f "manifests/nginx-values-v${NGINX_CHART_VERSION}.yaml" \
+  -f "../terraform/3.ingress/manifests/nginx-values-v${NGINX_CHART_VERSION}.yaml" \
   --wait
 kubectl -n ingress-nginx rollout status deploy/ingress-nginx
 
@@ -31,19 +31,19 @@ helm install \
   --version "$CERT_MANAGER_HELM_CHART_VERSION" \
   --namespace cert-manager \
   --create-namespace \
-  -f manifests/cert-manager-values-v${CERT_MANAGER_HELM_CHART_VERSION}.yaml \
+  -f ../terraform/3.ingress/manifests/cert-manager-values-v${CERT_MANAGER_HELM_CHART_VERSION}.yaml \
   --wait
 kubectl -n cert-manager rollout status deploy/cert-manager
 
 kubectl create secret generic "digitalocean-dns" --namespace backend --from-literal=access-token="$1"
-kubectl apply -f manifests/cert-manager-wcard-issuer.yaml
-kubectl apply -f manifests/cert-manager-wcard-certificate.yaml
-kubectl apply -f manifests/wildcard-host.yaml
+kubectl apply -f ../terraform/3.ingress/manifests/cert-manager-wcard-issuer.yaml
+kubectl apply -f ../terraform/3.ingress/manifests/cert-manager-wcard-certificate.yaml
+kubectl apply -f ../terraform/3.ingress/manifests/wildcard-host.yaml
 
-kubectl apply -f manifests/echo_deployment.yaml
-kubectl apply -f manifests/quote_deployment.yaml
-kubectl apply -f manifests/echo_service.yaml
-kubectl apply -f manifests/quote_service.yaml
+kubectl apply -f ../terraform/3.ingress/manifests/echo_deployment.yaml
+kubectl apply -f ../terraform/3.ingress/manifests/quote_deployment.yaml
+kubectl apply -f ../terraform/3.ingress/manifests/echo_service.yaml
+kubectl apply -f ../terraform/3.ingress/manifests/quote_service.yaml
 
 kubectl get all -n ingress-nginx
 echo "Go configure DNS"
